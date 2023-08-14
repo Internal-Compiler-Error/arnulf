@@ -1,0 +1,12 @@
+[package]
+name = "arnulf"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Tap praser, named after the great Arnulf of Metz, patron saint of brewers."
+
+[dependencies]
+color-eyre = "0.6.2"
+futures = "0.3.28"
+nom = "7.1.3"
+pin-project = "1.1.3"
