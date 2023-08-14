@@ -10,7 +10,7 @@ use nom::IResult;
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::Parser;
-use crate::{TestDirective, TestPoint};
+use crate::{Pragma, TestDirective, TestPoint};
 
 pub fn parse_version(s: &str) -> IResult<&str, &str> {
     use nom::bytes::streaming::tag;
@@ -94,11 +94,10 @@ fn parse_anything(s: &str) -> IResult<&str, &str> {
     take_until1("\n")(s)
 }
 
-fn parse_pragma(s: &str) -> IResult<&str, &str> {
+fn parse_pragma(s: &str) -> IResult<&str, Pragma> {
     use nom::bytes::streaming::tag;
 
     fn parse_pragma_key(s: &str) -> IResult<&str, &str> {
-        use nom::bytes::streaming::take_while;
 
         take_while(|c| {
             let chr = c as u8;
@@ -106,10 +105,16 @@ fn parse_pragma(s: &str) -> IResult<&str, &str> {
         })(s)
     }
 
-    let (remaining, _pragma) = preceded(tag("pragma "), alt((tag("+"), tag("-"))))(s)?;
+    let (remaining, pragma) = preceded(tag("pragma "), alt((tag("+"), tag("-"))))(s)?;
+    let (remaining, key) = parse_pragma_key(remaining)?;
 
-    // TODO: figure out a good way to represent + pragma and - pragma
-    parse_pragma_key(remaining)
+    let pragma = match pragma {
+        "+" => Pragma::Enable(key.to_string()),
+        "-" => Pragma::Disable(key.to_string()),
+        _ => unreachable!(),
+    };
+
+    Ok((remaining, pragma))
 }
 
 
