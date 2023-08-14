@@ -16,6 +16,7 @@ pub enum TestDetails {
     Anything(String),
     // todo: implement subtest
 }
+
 pub struct Comment(pub String);
 
 pub struct TestPlan(pub usize);
@@ -29,11 +30,14 @@ pub enum Pragma {
 
 pub struct TestPoint {
     pub status: bool,
-    pub test_number: Option<u32>,
+    pub test_number: Option<usize>,
     pub description: Option<String>,
+    pub directive: Option<TestDirective>,
     pub yaml: Option<String>,
 }
-
+pub enum TestDirective {
+    Todo(Option<String>), Skip(Option<String>)
+}
 mod parsing;
 
 struct Parser<T> {

@@ -1,9 +1,16 @@
 #![allow(dead_code)]
 
 use nom::branch::alt;
-use nom::character::streaming::{digit1, multispace0, space0};
+use nom::bytes::streaming::take_while;
+use nom::bytes::streaming::take_until;
+use nom::character::{is_alphanumeric};
+use nom::character::streaming::{digit1, multispace0, newline, space0};
+use nom::combinator::opt;
 use nom::IResult;
-use nom::sequence::{preceded, terminated};
+use nom::multi::many1;
+use nom::sequence::{delimited, preceded, terminated, tuple};
+use nom::Parser;
+use crate::{TestDirective, TestPoint};
 
 pub fn parse_version(s: &str) -> IResult<&str, &str> {
     use nom::bytes::streaming::tag;
@@ -40,7 +47,6 @@ fn parse_plan(s: &str) -> IResult<&str, u32> {
 
 fn parse_bail_out(s: &str) -> IResult<&str, Option<&str>> {
     use nom::bytes::streaming::tag;
-    use nom::bytes::streaming::take_until;
 
     fn parse(s: &str) -> IResult<&str, &str> {
         preceded(tag("Bail out!"), take_until("\n"))(s)
@@ -56,18 +62,12 @@ fn parse_bail_out(s: &str) -> IResult<&str, Option<&str>> {
 
 fn parse_yaml(s: &str) -> IResult<&str, &str> {
     use nom::bytes::streaming::tag;
-    use nom::bytes::streaming::take_until;
 
-    fn parse(s: &str) -> IResult<&str, &str> {
-        preceded(tag("  ---\n"), take_until("  ...\n"))(s)
-    }
-
-    parse(s)
+    delimited(tag("  ---\n"), take_while(|c: char| { c.is_ascii() }), tag("  ...\n"))(s)
 }
 
 fn parse_comment(s: &str) -> IResult<&str, Option<&str>> {
     use nom::bytes::streaming::tag;
-    use nom::bytes::streaming::take_until;
 
     fn parse(s: &str) -> IResult<&str, &str> {
         preceded(tag("#"), take_until("\n"))(s)
@@ -99,7 +99,6 @@ fn parse_pragma(s: &str) -> IResult<&str, &str> {
 
     fn parse_pragma_key(s: &str) -> IResult<&str, &str> {
         use nom::bytes::streaming::take_while;
-        use nom::character::is_alphanumeric;
 
         take_while(|c| {
             let chr = c as u8;
@@ -107,7 +106,7 @@ fn parse_pragma(s: &str) -> IResult<&str, &str> {
         })(s)
     }
 
-    let (remaining, pragma) = preceded(tag("pragma "), alt((tag("+"), tag("-"))))(s)?;
+    let (remaining, _pragma) = preceded(tag("pragma "), alt((tag("+"), tag("-"))))(s)?;
 
     // TODO: figure out a good way to represent + pragma and - pragma
     parse_pragma_key(remaining)
@@ -118,27 +117,78 @@ fn parse_description(s: &str) -> IResult<&str, &str> {
     use nom::bytes::streaming::tag;
     use nom::bytes::streaming::take_till1;
 
-    let (remaining, description) = alt((tag(" - "), tag(" ")))(s)?;
-    take_till1(|c| {
-        let chr = c as u8;
-        chr == b'#' || chr == b'\n'
-    })(s)
+    let prefix = tag(" -");
+    let description = take_till1(|c| {
+        c == '#'
+    });
+
+    preceded(opt(prefix), preceded(tag(" "), description))(s)
 }
 
-fn test_directive(s: &str) -> IResult<&str, &str> {
+fn parse_directive(s: &str) -> IResult<&str, TestDirective> {
     use nom::bytes::streaming::tag_no_case;
     use nom::bytes::streaming::tag;
 
-    let (remaining, reason) = preceded(tag("#"), alt((tag_no_case("todo"), tag_no_case("skip"))))(s)?;
-    // todo: make a better type
-    preceded(tag(" "), parse_anything)(reason)
+    let (remaining, directive) = preceded(tag("# "), alt((tag_no_case("todo"), tag_no_case("skip"))))(s)?;
+    let (remaining, reason) = opt(preceded(tag(" "), take_until("\n")))(remaining)?;
+
+    match directive {
+        "todo" => {
+            match reason {
+                Some(reason) => Ok((remaining, TestDirective::Todo(Some(reason.to_string())))),
+                None => Ok((remaining, TestDirective::Todo(None))),
+            }
+        }
+        "skip" => {
+            match reason {
+                Some(reason) => Ok((remaining, TestDirective::Skip(Some(reason.to_string())))),
+                None => Ok((remaining, TestDirective::Skip(None))),
+            }
+        }
+        _ => unreachable!(),
+    }
 }
 
-pub fn parse_test_point(s: &str) -> IResult<&str, &str> {
+pub fn parse_test_point(s: &str) -> IResult<&str, Vec<TestPoint>> {
     use nom::bytes::streaming::tag;
 
-    let (remaining, status) = alt((tag("ok"), tag("not ok")))(s)?;
-    let (remaining, test_number) = preceded(tag(" "), digit1)(remaining)?;
+    let parse_test_number = preceded(tag(" "), digit1);
+    let status = alt((tag("ok"), tag("not ok")));
 
-    todo!()
+    let test_point = tuple((
+        status,
+        opt(parse_test_number),
+        opt(parse_description),
+        opt(parse_directive),
+        newline,
+        opt(parse_yaml),
+    )).map(|(status, test_num, description, directive, _newline, yaml)| {
+        let status = match status {
+            "ok" => true,
+            "not ok" => false,
+            _ => unreachable!(),
+        };
+
+        let test_num = test_num.map(|test_num| {
+            test_num.parse::<usize>().expect("Test number should be a number")
+        });
+
+        let description = description.map(|description| {
+            description.to_string()
+        });
+
+        let yaml = yaml.map(|yaml| {
+            yaml.to_string()
+        });
+
+        TestPoint {
+            status,
+            description,
+            directive,
+            yaml,
+            test_number: test_num,
+        }
+    });
+
+    many1(test_point)(s)
 }
