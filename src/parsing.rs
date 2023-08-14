@@ -1,6 +1,7 @@
 #![allow(dead_code)]
+
 use nom::branch::alt;
-use nom::character::streaming::{multispace0, space0};
+use nom::character::streaming::{digit1, multispace0, space0};
 use nom::IResult;
 use nom::sequence::{preceded, terminated};
 
@@ -10,16 +11,10 @@ pub fn parse_version(s: &str) -> IResult<&str, &str> {
     tag("TAP Version 14\n")(s)
 }
 
-fn parse_number(s: &str) -> IResult<&str, &str> {
-    use nom::character::streaming::digit1;
-
-    digit1(s)
-}
-
 fn parse_test_count(s: &str) -> IResult<&str, &str> {
     use nom::bytes::streaming::tag;
 
-    preceded(tag("1.."), parse_number)(s)
+    preceded(tag("1.."), digit1)(s)
 }
 
 fn parse_plan(s: &str) -> IResult<&str, u32> {
@@ -143,7 +138,7 @@ pub fn parse_test_point(s: &str) -> IResult<&str, &str> {
     use nom::bytes::streaming::tag;
 
     let (remaining, status) = alt((tag("ok"), tag("not ok")))(s)?;
-    let (remaining, test_number) = preceded(tag(" "), parse_number)(remaining)?;
+    let (remaining, test_number) = preceded(tag(" "), digit1)(remaining)?;
 
     todo!()
 }
