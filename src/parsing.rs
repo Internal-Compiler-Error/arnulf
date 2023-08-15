@@ -137,7 +137,7 @@ fn parse_status(s: &str) -> IResult<&str, bool> {
 }
 
 fn parse_test_number(s: &str) -> IResult<&str, usize> {
-    let (remaining, num) = preceded(space1, complete::digit1)(s)?;
+    let (remaining, num) = preceded(space1, digit1)(s)?;
     Ok((remaining, num.parse().expect("Test number should be a number")))
 }
 
