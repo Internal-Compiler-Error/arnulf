@@ -1,19 +1,14 @@
-#![allow(dead_code)]
-
-use std::io::Read;
-use futures::{FutureExt, TryFutureExt};
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_until1};
+use nom::bytes::complete::{tag, tag_no_case};
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::take_until;
 use nom::character::{complete, is_alphanumeric};
-use nom::character::complete::space1;
-use nom::character::complete::{digit1, multispace0, newline, space0};
+use nom::character::complete::{newline, space1};
+use nom::character::complete::{digit1, multispace0, space0};
 use nom::combinator::{opt, rest};
 use nom::IResult;
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded, terminated, tuple};
-use nom::Parser;
 use crate::{Pragma, TestDirective, TestPoint};
 
 pub fn parse_version(s: &str) -> IResult<&str, &str> {
@@ -57,8 +52,6 @@ fn parse_bail_out(s: &str) -> IResult<&str, Option<&str>> {
 }
 
 fn parse_yaml(s: &str) -> IResult<&str, &str> {
-    use nom::bytes::complete::tag;
-
     delimited(tag("  ---\n"), rest, tag("  ...\n"))(s)
 }
 
@@ -106,24 +99,17 @@ fn parse_pragma(s: &str) -> IResult<&str, Pragma> {
     Ok((remaining, pragma))
 }
 
-fn parse_description(s: &str) -> IResult<&str, &str> {
-    use nom::bytes::complete::tag;
+fn parse_description(s: &str) -> IResult<&str, String> {
     use nom::bytes::complete::take_until1;
 
     let prefix = tag(" -");
     let description = preceded(space1, alt((take_until1("\n"), take_until1(" #"))));
 
     let (remaining, description) = preceded(opt(prefix), description)(s)?;
-    Ok((remaining, description.trim()))
+    Ok((remaining, description.trim().to_string()))
 }
 
 fn parse_directive(s: &str) -> IResult<&str, TestDirective> {
-    use nom::bytes::complete::tag;
-    use nom::bytes::complete::tag_no_case;
-    use nom::bytes::complete::take_while;
-    use nom::character::complete::space0;
-    use nom::bytes::complete::take_until;
-
     let (remaining, _prefix) = tag(" #")(s)?;
     let (remaining, _prefix) = space0(remaining)?;
     let (remaining, directive) = alt((tag_no_case("todo"), tag_no_case("skip")))(remaining)?;
@@ -132,7 +118,7 @@ fn parse_directive(s: &str) -> IResult<&str, TestDirective> {
 
     let directive = directive.to_lowercase();
     let reason = reason.trim();
-    let reason = if reason.len() == 0 { None } else { Some(reason.to_string()) };
+    let reason = if reason.is_empty() { None } else { Some(reason.to_string()) };
     match &*directive {
         "todo" => Ok((remaining, TestDirective::Todo(reason))),
         "skip" => Ok((remaining, TestDirective::Skip(reason))),
@@ -155,40 +141,38 @@ fn parse_test_number(s: &str) -> IResult<&str, usize> {
     Ok((remaining, num.parse().expect("Test number should be a number")))
 }
 
-pub fn parse_test_point(s: &str) -> IResult<&str, Vec<TestPoint>> {
-    use nom::character::complete::newline;
+fn parse_test_point(s: &str) -> IResult<&str, TestPoint> {
+    fn parse(s: &str) -> IResult<&str, (bool, Option<usize>, Option<String>, Option<TestDirective>, char, Option<&str>)> {
+        tuple((
+            parse_status,
+            opt(parse_test_number),
+            opt(parse_description),
+            opt(parse_directive),
+            newline,
+            opt(parse_yaml),
+        ))(s)
+    }
 
-    let test_point = tuple((
-        parse_status,
-        opt(parse_test_number),
-        opt(parse_description),
-        opt(parse_directive),
-        newline,
-        opt(parse_yaml),
-    )).map(|(status, test_num, description, directive, _newline, yaml)| {
-        let description = description.map(|description| {
-            description.to_string()
-        });
-
-        let yaml = yaml.map(|yaml| {
-            yaml.to_string()
-        });
-
-        TestPoint {
-            status,
-            description,
-            directive,
-            yaml,
-            test_number: test_num,
-        }
+    let (remaining, (status, test_number, description, directive, _newline, yaml)) = parse(s)?;
+    let yaml = yaml.map(|yaml| {
+        yaml.to_string()
     });
 
-    dbg!(many1(test_point)(s))
+    Ok((remaining, TestPoint {
+        status,
+        description,
+        directive,
+        yaml,
+        test_number,
+    }))
+}
+
+pub fn parse_test_points(s: &str) -> IResult<&str, Vec<TestPoint>> {
+    many1(parse_test_point)(s)
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
     use super::*;
 
     #[test]
@@ -196,7 +180,7 @@ mod test {
         let input = "ok";
 
         let (_remaining, status) = parse_status(input).unwrap();
-        assert_eq!(status, true);
+        assert!(status);
     }
 
     #[test]
@@ -280,7 +264,7 @@ mod test {
 #[test]
 fn test_point() {
     let input = "ok\n";
-    let (_remaining, tests) = parse_test_point(input).unwrap();
+    let (_remaining, tests) = parse_test_points(input).unwrap();
 
     let expected = vec![
         TestPoint {

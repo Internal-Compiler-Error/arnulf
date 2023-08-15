@@ -4,7 +4,7 @@ use futures::{AsyncBufReadExt, Stream, AsyncReadExt};
 use std::{io::Result, pin::Pin, task::{Context, Poll}, io};
 use std::future::Future;
 use pin_project::pin_project;
-use crate::parsing::{parse_test_point, parse_version};
+use crate::parsing::{parse_test_points, parse_version};
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum TestDetails {
@@ -94,7 +94,7 @@ impl<T> Stream for ResultStream<T>
 
         // parse the buffer
         let string = std::str::from_utf8(this.buffer).expect("buffer should be utf8");
-        let test_point = parse_test_point(string);
+        let test_point = parse_test_points(string);
 
         match test_point {
             // we parsed a test point, return it, but keep the rest of the buffer
@@ -106,7 +106,7 @@ impl<T> Stream for ResultStream<T>
             }
             // if we can need more data, keep reading
             Err(nom::Err::Incomplete(_)) => {
-                return Poll::Pending;
+                Poll::Pending
             }
             Err(_) => todo!(),
         }
@@ -125,7 +125,7 @@ impl<T> Parser<T>
         // We only parse tap version 14
         let mut buffer = String::new();
         stream.read_line(&mut buffer).await?;
-        let (_remaining, _version) = parse_version(&*buffer).unwrap();
+        let (_remaining, _version) = parse_version(&buffer).unwrap();
 
         Ok(Parser {
             stream,
