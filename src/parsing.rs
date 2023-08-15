@@ -103,7 +103,9 @@ fn parse_description(s: &str) -> IResult<&str, String> {
     use nom::bytes::complete::take_until1;
 
     let prefix = tag(" -");
-    let description = preceded(space1, alt((take_until1("\n"), take_until1(" #"))));
+    // ordering between " #" and "\n" is important, because " #" denotes the start of directives, we
+    // want to match that first before trying to match the newline.
+    let description = preceded(space1, alt((take_until1(" #"), take_until1("\n"))));
 
     let (remaining, description) = preceded(opt(prefix), description)(s)?;
     Ok((remaining, description.trim().to_string()))
@@ -259,22 +261,58 @@ mod test {
         assert_eq!(remaining, "\n");
         assert_eq!(parsed, expected);
     }
-}
 
-#[test]
-fn test_point() {
-    let input = "ok\n";
-    let (_remaining, tests) = parse_test_points(input).unwrap();
+    #[test]
+    fn parse_single_ok() {
+        let input = "ok\n";
+        let (_remaining, tests) = parse_test_points(input).unwrap();
 
-    let expected = vec![
-        TestPoint {
-            status: true,
-            description: None,
-            directive: None,
-            yaml: None,
-            test_number: None,
-        }
-    ];
-    assert_eq!(tests.len(), 1);
-    assert_eq!(tests, expected);
+        let expected = vec![
+            TestPoint {
+                status: true,
+                description: None,
+                directive: None,
+                yaml: None,
+                test_number: None,
+            }
+        ];
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests, expected);
+    }
+
+    #[test]
+    fn parse_ok_with_description() {
+        let input = "ok - this is a stupid description\n";
+        let (_remaining, tests) = parse_test_points(input).unwrap();
+
+        let expected = vec![
+            TestPoint {
+                status: true,
+                description: Some("this is a stupid description".to_string()),
+                directive: None,
+                yaml: None,
+                test_number: None,
+            }
+        ];
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests, expected);
+    }
+
+    #[test]
+    fn parse_ok_with_description_num_and_directive() {
+        let input = "ok 3 - this is a stupid description # SkiPped: stupid Legacy skip \n";
+        let (_remaining, tests) = parse_test_points(input).unwrap();
+
+        let expected = vec![
+            TestPoint {
+                status: true,
+                description: Some("this is a stupid description".to_string()),
+                directive: Some(TestDirective::Skip(Some("stupid Legacy skip".to_string()))),
+                yaml: None,
+                test_number: Some(3),
+            }
+        ];
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests, expected);
+    }
 }
