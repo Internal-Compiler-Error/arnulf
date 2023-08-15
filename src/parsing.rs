@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case};
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::take_until;
-use nom::character::{complete, is_alphanumeric};
+use nom::character::is_alphanumeric;
 use nom::character::complete::{newline, space1};
 use nom::character::complete::{digit1, multispace0, space0};
 use nom::combinator::{opt, rest};
