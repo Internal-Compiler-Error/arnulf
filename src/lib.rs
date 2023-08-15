@@ -6,6 +6,7 @@ use std::future::Future;
 use pin_project::pin_project;
 use crate::parsing::{parse_test_point, parse_version};
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum TestDetails {
     TestPoint(TestPoint),
     BailOut(BailOut),
@@ -17,17 +18,23 @@ pub enum TestDetails {
     // todo: implement subtest
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Comment(pub String);
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct TestPlan(pub usize);
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct BailOut(pub String);
 
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Pragma {
     Enable(String),
     Disable(String),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct TestPoint {
     pub status: bool,
     pub test_number: Option<usize>,
@@ -35,6 +42,7 @@ pub struct TestPoint {
     pub directive: Option<TestDirective>,
     pub yaml: Option<String>,
 }
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum TestDirective {
     Todo(Option<String>), Skip(Option<String>)
 }
@@ -90,6 +98,7 @@ impl<T> Stream for ResultStream<T>
 
         match test_point {
             // we parsed a test point, return it, but keep the rest of the buffer
+            #[allow(unused_variables)]
             Ok((remaining, test_point)) => {
                 // discard the parsed part of the buffer
                 this.buffer.drain(0..(string.len() - remaining.len()));
@@ -116,7 +125,7 @@ impl<T> Parser<T>
         // We only parse tap version 14
         let mut buffer = String::new();
         stream.read_line(&mut buffer).await?;
-        let (remaining, _version) = parse_version(&*buffer).unwrap();
+        let (_remaining, _version) = parse_version(&*buffer).unwrap();
 
         Ok(Parser {
             stream,
